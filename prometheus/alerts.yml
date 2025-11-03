@@ -1,0 +1,113 @@
+---
+groups:
+  - name: flask_app_alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(flask_http_request_total{status=~"5.."}[5m])) 
+            /
+            sum(rate(flask_http_request_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate detected in Flask app"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency detected in Flask app"
+          description: "95th percentile latency is {{ $value }}s (threshold: 1s)"
+
+      - alert: LowOrderSuccessRate
+        expr: |
+          (
+            sum(rate(orders_total{status="success"}[5m]))
+            /
+            sum(rate(orders_total[5m]))
+          ) < 0.80
+        for: 5m
+        labels:
+          severity: critical
+          team: business
+        annotations:
+          summary: "Order success rate is critically low"
+          description: "Success rate is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      - alert: ApplicationDown
+        expr: up{job="flask-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Flask application is down"
+          description: "The Flask app has been unreachable for more than 1 minute"
+
+      - alert: HighRequestRate
+        expr: sum(rate(flask_http_request_total[1m])) > 100
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Unusually high request rate"
+          description: "Request rate is {{ $value }} req/s (threshold: 100 req/s)"
+
+      - alert: LowActiveUsers
+        expr: active_users < 5
+        for: 5m
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "Active user count is low"
+          description: "Only {{ $value }} active users (threshold: 5)"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Low disk space"
+          description: "Only {{ $value }}% disk space remaining on {{ $labels.instance }}"

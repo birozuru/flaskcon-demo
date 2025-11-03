@@ -1,0 +1,22 @@
+---
+global:
+  resolve_timeout: 1m
+route:
+  group_by:
+    - job
+  group_wait: 30s
+  receiver: slack
+  routes:
+    - match:
+        severity: critical,warning
+        receiver: slack
+      continue: true
+receivers:
+  - name: slack
+    slack_configs:
+      - channel: "#alertmanager"
+        send_resolved: true
+        text: "{{ .CommonAnnotations.summary }}"
+        api_url_file: /etc/alertmanager/slack_api_url
+templates:
+  - 'default.tmpl'

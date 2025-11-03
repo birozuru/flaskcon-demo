@@ -1,0 +1,154 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+local.file "hostname" {
+  filename = "/etc/hostname"
+}
+
+discovery.docker "linux" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker" {
+  targets = discovery.docker.linux.targets
+  
+  rule {
+    replacement   = local.file.hostname.content
+    target_label  = "machine_name"
+  }
+  
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "network"
+    action        = "replace"
+    replacement   = "flaskcon-demo-app"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = ".*"
+    action        = "keep"
+  }
+  
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "service_name"
+    action        = "replace"
+  }
+}
+
+loki.source.docker "default" {
+  host    = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.docker.output
+  
+  labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+  
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url       = "http://loki:3100/loki/api/v1/push"
+    tenant_id = "flaskcon"
+  }
+  
+  external_labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+}
+
+
+prometheus.exporter.cadvisor "default" {
+  docker_host = "unix:///var/run/docker.sock"
+}
+
+prometheus.scrape "cadvisor" {
+  targets = prometheus.exporter.cadvisor.default.targets
+  job_name = "cadvisor"
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.exporter.unix "node_exporter" {
+  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+  enable_collectors = ["meminfo"]
+
+  filesystem {
+    fs_types_exclude = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|" +
+      "debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|" +
+      "mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|" +
+      "securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys)($|/)"
+    mount_timeout        = "5s"
+  }
+
+  netclass {
+    ignored_devices = "^(veth.*|cali.*|[a-f0-9]{15})$"
+  }
+
+  netdev {
+    device_exclude = "^(veth.*|cali.*|[a-f0-9]{15})$"
+  }
+}
+
+discovery.relabel "node_exporter" {
+  targets = prometheus.exporter.unix.node_exporter.targets
+  
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = ".*(node_exporter).*"
+    action        = "keep"
+  }
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+
+  rule {
+    target_label = "job"
+    replacement = "integrations/node_exporter"
+  }
+}
+
+prometheus.scrape "node_exporter" {
+  targets = discovery.relabel.node_exporter.output
+  job_name = "node_exporter"
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.scrape "testnet" {
+  targets = [
+    {"__address__" = "flask-app:5002", "service" = "flaskcon-demo-app", "team" = "infra"},
+  ]
+  
+  job_name        = "flaskcon-demo-app"
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+    
+    tls_config {
+      insecure_skip_verify = false
+    }
+  }
+  
+  external_labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+}      
