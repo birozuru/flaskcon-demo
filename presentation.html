@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoring Flask Performance in Production</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0a0a0a;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    .slides {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      padding: 4rem 6rem;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .slide.active {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 1;
+    }
+
+    .slide h1 {
+      font-size: 3.5rem;
+      margin-bottom: 2rem;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .slide h2 {
+      font-size: 2.5rem;
+      margin-bottom: 1.5rem;
+      color: #3b82f6;
+    }
+
+    .slide h3 {
+      font-size: 1.8rem;
+      margin-bottom: 1rem;
+      color: #f59e0b;
+    }
+
+    .slide p {
+      font-size: 1.4rem;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+      color: #e5e7eb;
+    }
+
+    .slide ul, .slide ol {
+      font-size: 1.4rem;
+      line-height: 1.8;
+      margin-left: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .slide li {
+      margin-bottom: 0.5rem;
+    }
+
+    .slide code {
+      background: rgba(59, 130, 246, 0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Fira Code', 'Courier New', monospace;
+      font-size: 1.2rem;
+    }
+
+    .slide pre {
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1rem 0;
+      border-left: 4px solid #3b82f6;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .slide pre code {
+      background: none;
+      padding: 0;
+      font-size: 1.1rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    .title-slide {
+      text-align: center;
+      justify-content: center !important;
+    }
+
+    .title-slide h1 {
+      font-size: 4.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .title-slide .subtitle {
+      font-size: 2rem;
+      color: #94a3b8;
+      margin-bottom: 3rem;
+    }
+
+    .title-slide .author {
+      font-size: 1.6rem;
+      color: #64748b;
+    }
+
+    .two-column {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      height: 100%;
+    }
+
+    .column {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .highlight {
+      background: rgba(245, 158, 11, 0.15);
+      padding: 1rem 1.5rem;
+      border-left: 4px solid #f59e0b;
+      margin: 1rem 0;
+      border-radius: 4px;
+    }
+
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .warning { color: #f59e0b; }
+    .info { color: #3b82f6; }
+
+    .table {
+      width: 100%;
+      margin: 1rem 0;
+      border-collapse: collapse;
+      font-size: 1.2rem;
+    }
+
+    .table th, .table td {
+      padding: 0.8rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+
+    .table th {
+      background: rgba(59, 130, 246, 0.2);
+      color: #3b82f6;
+      font-weight: 600;
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      display: flex;
+      gap: 1rem;
+      z-index: 1000;
+    }
+
+    .controls button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.8rem 1.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: all 0.3s;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .controls button:hover {
+      background: #2563eb;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .controls button:disabled {
+      background: #334155;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .progress {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+      transition: width 0.3s;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    }
+
+    .slide-number {
+      position: fixed;
+      bottom: 2rem;
+      left: 2rem;
+      font-size: 1.1rem;
+      color: #64748b;
+      font-weight: 500;
+    }
+
+    .emoji {
+      font-size: 3rem;
+      margin: 1rem 0;
+    }
+
+    .center { text-align: center; }
+
+    .diagram {
+      font-family: 'Fira Code', monospace;
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+      font-size: 1rem;
+      color: #94a3b8;
+      white-space: pre;
+      border-left: 4px solid #3b82f6;
+      line-height: 1.4;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(59, 130, 246, 0.2);
+      padding: 0.3rem 0.8rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      margin: 0.2rem;
+      border: 1px solid #3b82f6;
+    }
+
+    .file-path {
+      color: #94a3b8;
+      font-style: italic;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-box {
+      background: rgba(59, 130, 246, 0.1);
+      border: 2px solid #3b82f6;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 0.5rem 0;
+    }
+
+    .command {
+      background: #1e293b;
+      border-left: 4px solid #10b981;
+      padding: 1rem;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+      color: #10b981;
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="slides">
+    <!-- Slide 1: Title -->
+    <div class="slide active title-slide">
+      <h1>Monitoring Flask application performance <br/>in Production</h1>
+      <div class="subtitle">Best Practices with Open-Source Tools</div>
+      <p style="font-size: 1.8rem; color: #3b82f6; margin-bottom: 2rem;">
+        Prometheus • Grafana • Loki • AlertManager • Grafana Alloy
+      </p>
+      <div class="author">
+        <p>Simple Demo Stack</p>
+        <p style="margin-top: 1rem;">github.com/birozuru/flaskcon-demo</p>
+      </div>
+    </div>
+
+
+    <div class="slide">
+      <h1>The Observability Challenge</h1>
+      <div class="highlight">
+        <p style="font-size: 1.6rem;">"Your Flask application works fine on your local machine... then you deploy to production"</p>
+      </div>
+      <ul style="margin-top: 2rem; font-size: 1.5rem;">
+        <li>Traffic spikes you didn't anticipate</li>
+        <li>Endpoints that were fast are now slow</li>
+        <li>Random errors at 3 AM (We all have been there)</li>
+        <li>No visibility into what's happening</li>
+      </ul>
+      <p style="margin-top: 2rem; font-size: 1.8rem; text-align: center;">
+        <span class="warning">You need insight into your application's performance and behavior</span>
+      </p>
+    </div>
+
+    <!-- Slide 3: Project Structure -->
+    <div class="slide">
+      <h1>Project Structure</h1>
+      <p>A complete, production-ready monitoring stack:</p>
+      <div class="diagram">Project Structure:
+flask-observability-demo/
+├── app.py                    # Instrumented Flask demo application
+├── docker-compose.yml        # Production-ready stack
+├── Makefile                  # Convenience commands for testing and demoing
+├── prometheus/
+│   ├── prometheus.yml        # Prometheus configuration
+│   └── alerts.yml            # Alerting rules
+├── grafana/
+│   ├── provisioning/         # Datasources and dashboard config
+│   └── dashboards/           # Pre-built dashboards
+├── loki/
+│   └── loki-config.yml       # Loki configuration for log aggregation
+├── alertmanager/
+│   └── alertmanager.yml      # Alert routing configuration for alerting
+└── grafana-alloy/
+    └── config.alloy          # Alloy configuration for unified observability data pipeline
+    </div>
+    </div>
+
+    <!-- Slide 4: The Stack -->
+    <div class="slide">
+      <h1>Production Stack Architecture</h1>
+      <div class="diagram">┌────────────────────────────────────────┐
+│      Flask App :5000                   │
+│  ┌──────────────────────────────┐      │
+│  │ PrometheusMetrics(app)       │      │
+│  │ /metrics endpoint            │      │
+│  └──────────────────────────────┘      │
+│  ┌──────────────────────────────┐      │
+│  │ Structured JSON Logs         │      │
+│  │ stdout/files                 │      │
+│  └──────────────────────────────┘      │
+└─┬────────────────────────────────────┬─┘
+  │ metrics scrape                     │ logs
+  │ every 15s                          │
+  ▼                                    ▼
+┌─────────────────────────────────────┐ ┌─────────────────────────┐
+│    Grafana Alloy :12345             │ │    Grafana Alloy        │
+│                                     │ │  • Tails application    │
+│  • Collects node metrics            │ │  • Parses JSON logs     │
+│  • Remote writes to Prometheus      │ │  • Pushes to Loki       │
+└─────┬───────────────────────────────┘ └─────────┬───────────────┘
+      │                                           |
+      | remote_write                              │ push
+      ▼                                           ▼
+┌─────────────────────────────────────┐ ┌─────────────────────────┐
+│    Prometheus :9090                 │ │    Loki :3100           │
+│  • Time-series database             │ │  • Log aggregation      │
+│  • PromQL queries                   │ │  • LogQL queries        │
+│  • Alert evaluation                 │ │  • Label-based storage  │
+└─────┬───────────────────────────────┘ └─────────┬───────────────┘
+      │                                         │
+      ├──queries & alerts──────────────────────┐│
+      │              ┌─────────────────┐       ││
+      ├──queries────>│ Grafana :3000   │<──────┘│
+      │              │ • Dashboards    │        │
+      │              │ • Logs + Metrics│        │
+      │              └─────────────────┘        │
+      │                                         │
+      ├──alerts─────>┌─────────────────┐        │
+                     │ AlertManager    │        │
+                     │ :9093           │        │
+                     └─────────────────┘        │</div>
+    </div>
+
+    <!-- Slide 5: Key Metrics -->
+    <div class="slide">
+      <h1>Performance Metrics</h1>
+      <div class="metric-box">
+        <h3>1. Request Performance</h3>
+        <code>flask_http_request_duration_seconds</code> - Response time histogram<br/>
+        <code>flask_http_request_total</code> - Request counter by endpoint/status
+      </div>
+      <div class="metric-box">
+        <h3>2. Business Metrics</h3>
+        <code>orders_total{'{'}status="success|failed"{'}'}</code> - Order tracking<br/>
+        <code>order_value_dollars</code> - Transaction value distribution<br/>
+        <code>active_users</code> - Current active users
+      </div>
+      <div class="metric-box">
+        <h3>3. Database Performance</h3>
+        <code>database_query_duration_seconds{'{'}query_type{'}'}</code> - Query latency
+      </div>
+    </div>
+
+    <!-- Slide 6: Instrumentation Code -->
+    <div class="slide">
+      <h1>Instrumenting the Application</h1>
+      <pre><code>from prometheus_flask_exporter import PrometheusMetrics
+from prometheus_client import Counter, Histogram, Gauge
+
+app = Flask(__name__)
+
+# Automatic instrumentation
+metrics = PrometheusMetrics(app)
+metrics.info('flask_app_info', 'Flask Application Info', version='1.0.0')
+
+# Custom business metrics
+order_counter = Counter(
+    'orders_total',
+    'Total number of orders',
+    ['status']  # success|failed
+)
+
+order_value = Histogram(
+    'order_value_dollars',
+    'Order value in dollars'
+)
+
+active_users = Gauge('active_users', 'Active users')</code></pre>
+    </div>
+
+    <!-- Slide 7: Tracking Business metrics -->
+    <div class="slide">
+      <h1>Tracking Business Metrics</h1>
+      <pre><code>@app.route('/api/orders', methods=['POST'])
+def create_order():
+    """Simulate order creation with metrics"""
+    order_data = request.get_json()
+    
+    
+    query_start = time.time()
+    time.sleep(random.uniform(0.01, 0.1))  
+    database_query_duration.labels(query_type='insert').observe(time.time() - query_start)
+    
+    
+    success = random.random() > 0.1  # 90% success rate
+    
+    if success:
+        order_counter.labels(status='success').inc()
+        order_value.observe(order_data.get('amount', 0))
+        
+        logger.info("Order created successfully", extra={
+            'order_id': random.randint(1000, 9999),
+            'amount': order_data.get('amount', 0),
+            'customer': order_data.get('customer', 'unknown')
+        })
+        
+        return jsonify({
+            'status': 'success',
+            'order_id': random.randint(1000, 9999)
+        }), 201
+    else:
+        order_counter.labels(status='failed').inc()
+        
+        logger.error("Order creation failed", extra={
+            'reason': 'payment_declined',
+            'amount': order_data.get('amount', 0)
+        })
+        
+        return jsonify({
+            'status': 'error',
+            'message': 'Payment declined'
+        }), 400
+</code></pre>
+    </div>
+
+    <!-- Slide 8: Prometheus config -->
+    <div class="slide">
+      <h1>Prometheus Configuration</h1>
+      <p class="file-path">prometheus/prometheus.yml</p>
+      <pre><code>---
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'demo-cluster'
+    environment: 'development'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+rule_files:
+  - 'alerts.yml'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          service: 'alertmanager'</code></pre>
+    </div>
+
+    <!-- Slide 9: Alert rules -->
+    <div class="slide">
+      <h1>Production Alert Rules</h1>
+      <p class="file-path">prometheus/alerts.yml</p>
+      <pre><code>- alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(flask_http_request_total{status=~"5.."}[5m])) 
+            /
+            sum(rate(flask_http_request_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate detected in Flask app"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency detected in Flask app"
+          description: "95th percentile latency is {{ $value }}s (threshold: 1s)"</code></pre>
+    </div>
+
+    <!-- Slide 10: Critical alerts -->
+    <div class="slide">
+      <h1>Critical Production Alerts</h1>
+      <div class="two-column">
+        <div class="column">
+          <h3 class="error">Critical</h3>
+          <ul style="font-size: 1.3rem;">
+            <li><strong>ApplicationDown</strong><br/>App unreachable for 1m</li>
+            <li><strong>LowOrderSuccessRate</strong><br/>&lt;80% success for 5m</li>
+            <li><strong>DatabaseDown</strong><br/>Connection pool exhausted</li>
+          </ul>
+        </div>
+        <div class="column">
+          <h3 class="warning">Warning</h3>
+          <ul style="font-size: 1.3rem;">
+            <li><strong>HighErrorRate</strong><br/>&gt;5% errors for 2m</li>
+            <li><strong>HighLatency</strong><br/>p95 &gt; 1s for 3m</li>
+            <li><strong>HighRequestRate</strong><br/>&gt;100 req/s for 2m</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide 11: Docker compose setup -->
+    <div class="slide">
+      <h1>Container native deployment</h1>
+      <p class="file-path">compose.yml</p>
+      <pre><code>version: '3.8'
+
+version: '3.8'
+
+services:
+  flask-app:
+    build: .
+    container_name: flask-demo
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+    networks:
+      - observability
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=flask-app"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    networks:
+      - observability
+    depends_on:
+      - flask-app
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    networks:
+      - observability
+    depends_on:
+      - prometheus
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - observability
+
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./alertmanager/slack_api_url:/etc/alertmanager/slack_api_url
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://alertmanager:9093'
+    networks:
+      - observability
+      
+  grafana-alloy:
+    image: grafana/alloy:latest
+    container_name: grafana-alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - 12345:12345
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./grafana-alloy/config.alloy:/etc/alloy/config.alloy  
+    depends_on:
+      - grafana
+    networks:
+      - observability
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  alertmanager-data:</code></pre>
+      <div class="command">docker-compose up -d</div>
+    </div>
+
+    <div class="slide">
+      <h1>Demo Scenarios</h1>
+      <p class="file-path">Makefile</p>
+      <pre><code># Test normal load
+make test-traffic    # Generate normal traffic
+
+# Test business logic
+make test-orders     # Create sample orders with metrics
+
+# Trigger error alerts
+make test-errors     # Trigger high error rates (fires alerts)
+
+# Test performance degradation
+make test-slow       # Hit slow endpoints
+
+# Heavy load test
+make test-load       # Heavy load testing</code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Performance Baseline</h1>
+      <div class="command">make test-traffic</div>
+      <h3 style="margin-top: 2rem;">Watch Grafana Dashboard:</h3>
+      <ul style="font-size: 1.5rem;">
+        <li><span class="info">Request Rate:</span> ~10 req/s</li>
+        <li><span class="success">p95 Latency:</span> 100-200ms</li>
+        <li><span class="success">Error Rate:</span> 0%</li>
+        <li><span class="info">Active Users:</span> Updates in real-time</li>
+      </ul>
+      <p style="margin-top: 2rem; font-size: 1.3rem; font-style: italic;">
+        This establishes the performance baseline
+      </p>
+    </div>
+
+    <div class="slide">
+      <h1>Alert Triggering</h1>
+      <div class="command">make test-errors</div>
+      <h3 style="margin-top: 2rem;">Alert Lifecycle:</h3>
+      <ol style="font-size: 1.5rem;">
+        <li><span class="success">Minute 0:</span> GREEN (Inactive) - All good</li>
+        <li><span class="warning">Minute 1:</span> YELLOW (Pending) - Error rate high</li>
+        <li><span class="error">Minute 2:</span> RED (Firing) - Alert sent!</li>
+      </ol>
+      <p style="margin-top: 2rem;">
+        <span class="warning">Check AlertManager:</span> http://localhost:9093
+      </p>
+      <p style="font-size: 1.3rem; font-style: italic;">
+        The 'for: 2m' prevents alert noise
+      </p>
+    </div>
+            
+    <div class="slide">
+      <h1>Prometheus Queries</h1>
+      <h3>Request Rate per Endpoint:</h3>
+      <pre><code>sum(rate(flask_http_request_total[5m])) by (path)</code></pre>
+      
+      <h3>Error Rate Percentage:</h3>
+      <pre><code>sum(rate(flask_http_request_total{status=~"5.."}[5m])) 
+/ sum(rate(flask_http_request_total[5m])) * 100</code></pre>
+      
+      <h3>p95 Latency by Endpoint:</h3>
+      <pre><code>histogram_quantile(0.95,
+  sum(rate(flask_http_request_duration_seconds_bucket[5m]))
+  by (path, le)
+)</code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Performance Analysis</h1>
+      <h3>Slowest Endpoints (Top 5):</h3>
+      <pre><code>topk(5,
+  histogram_quantile(0.95,
+    sum(rate(flask_http_request_duration_seconds_bucket[5m]))
+    by (path, le)
+  )
+)</code></pre>
+      
+      <h3>Order Success Rate:</h3>
+      <pre><code>sum(rate(orders_total{status="success"}[5m])) 
+/ sum(rate(orders_total[5m])) * 100</code></pre>
+      
+      <h3>Database Query Performance:</h3>
+      <pre><code>histogram_quantile(0.95,
+  rate(database_query_duration_seconds_bucket[5m])
+) by (query_type)</code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Grafana Dashboard</h1>
+      <h3>Dashboard Panels:</h3>
+      <ul>
+        <li><strong>Request Rate</strong> - Total, 2xx, 5xx over time</li>
+        <li><strong>Response Time</strong> - p50, p95, p99 percentiles</li>
+        <li><strong>Error Rate %</strong> - 4xx and 5xx trends</li>
+        <li><strong>Active Users</strong> - Real-time gauge</li>
+        <li><strong>Order Success Rate</strong> - Business KPI</li>
+        <li><strong>Database Performance</strong> - Query duration by type</li>
+        <li><strong>Endpoint Breakdown</strong> - Table of all endpoints</li>
+      </ul>
+    </div>
+    
+    <div class="slide">
+      <h1>Structured Logging with Loki</h1>
+      <p class="file-path">Structured logging</p>
+      <pre><code>logger.info("Order created successfully", extra={
+            'order_id': random.randint(1000, 9999),
+            'amount': order_data.get('amount', 0),
+            'customer': order_data.get('customer', 'unknown')
+        })
+
+logger.error("Order creation failed", extra={
+            'reason': 'payment_declined',
+            'amount': order_data.get('amount', 0)
+        })</code></pre>
+      
+      <h3>Query in Grafana:</h3>
+      <pre><code># All errors
+{service="flaskcon-demo-app"} |= "ERROR"
+
+{service="flaskcon-demo-app"} | json | amount > 100 | level="ERROR"</code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Grafana Alloy</h1>
+      <h3>Metrics Collection & Remote Write:</h3>
+      <pre><code>prometheus.scrape "testnet" {
+  targets = [
+    {"__address__" = "flask-app:5002", "service" = "flaskcon-demo-app", "team" = "infra"},
+  ]
+  
+  job_name        = "flaskcon-demo-app"
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.scrape "node_exporter" {
+  targets = discovery.relabel.node_exporter.output
+  job_name = "node_exporter"
+  scrape_interval = "15s"
+  scrape_timeout  = "10s"
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+    
+    tls_config {
+      insecure_skip_verify = false
+    }
+  }
+  
+  external_labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+}  </code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Alloy Log Collection</h1>
+      <pre><code>loki.source.docker "default" {
+  host    = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.docker.output
+  
+  labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+  
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url       = "http://loki:3100/loki/api/v1/push"
+    tenant_id = "flaskcon"
+  }
+  
+  external_labels = {
+    env                      = "development",
+    app                      = "flaskcon-demo-app",
+  }
+}</code></pre>
+    </div>
+
+    <div class="slide">
+      <h1>Percentiles Over Averages</h1>
+      <div class="highlight">
+        <p style="font-size: 1.6rem;"><strong>Why averages lie:</strong></p>
+        <p>When monitoring performance metrics like latency, response times, or error rates, percentiles are favored over averages because they provide a more accurate and actionable view of system behavior</p>
+        <p>For example, if 100 requests are made and 99 of them return a response time of 10ms, while one returns a response time of 10,000ms, the average response time is 109ms. This looks good on average, but the p99 (99th percentile) response time is 10,000ms, which means 1% of users experienced a 10-second delay. This is a significant issue that would impact user experience and potentially lead to customer churn.</p>
+      </div>
+      
+      <h3 style="margin-top: 1rem;"></h3>
+      
+    </div>
+
+    <div class="slide">
+      <h1>Low Cardinality Labels</h1>
+      <div class="two-column">
+        <div class="column">
+          <h3 class="error">High Cardinality</h3>
+          <pre><code>Counter('requests',
+  ['user_id',    # 1M users
+   'request_id', # infinite
+   'ip_address'] # 100k IPs
+)
+
+</code></pre>
+        </div>
+        <div class="column">
+          <h3 class="success">Low Cardinality</h3>
+          <pre><code>Counter('requests',
+  ['endpoint',  # ~20
+   'method',    # 5
+   'status']    # 10
+)
+
+# = ~1000 time series
+</code></pre>
+        </div>
+      </div>
+      <p style="margin-top: 1rem; text-align: center; font-size: 1.4rem;">
+        <span class="warning">Rule: If it's unbounded, DON'T use as label</span>
+      </p>
+    </div>
+
+    <div class="slide">
+      <h1>Alert Design</h1>
+      <h3>Every alert must answer:</h3>
+      <ol style="font-size: 1.4rem;">
+        <li><strong>What's broken?</strong> - Clear summary</li>
+        <li><strong>Why does it matter?</strong> - User impact</li>
+        <li><strong>How to investigate?</strong> - Log queries, metrics</li>
+        <li><strong>How to fix?</strong> - Runbook link</li>
+      </ol>
+      
+      <h3 style="margin-top: 1rem;">Sample alert template:</h3>
+      <pre><code>annotations:
+  summary: "{{ $labels.path }} error rate {{ $value }}%"
+  description: |
+    Check logs: {service="flaskcon-demo-app"} | json 
+                | path="{{ $labels.path }}" |= "ERROR"
+    Runbook: https://flaskcon.com/runbooks/high-error</code></pre>
+    </div>
+
+ 
+   
+    <div class="slide">
+      <h1>Scaling to Production Traffic</h1>
+      <h3>Current demo handles:</h3>
+      <ul>
+        <li>~100 req/s</li>
+        <li>10M active time series</li>
+        <li>15-30 days retention</li>
+      </ul>
+      
+      <h3 style="margin-top: 1rem;">For larger scale, add:</h3>
+      <ul>
+        <li><strong>Prometheus Federation</strong> - Multiple Prometheus per region</li>
+        <li><strong>Thanos/Mimir</strong> - Long-term storage (S3/GCS)</li>
+        <li><strong>Prometheus HA</strong> - 2+ replicas for reliability</li>
+        <li><strong>AlertManager Clustering</strong> - Redundant alert routing</li>
+        <li><strong>Loki Distributor</strong> - Horizontal log scaling</li>
+      </ul>
+    </div>
+
+    <div class="slide">
+      <h1>Get Started in 5 Minutes</h1>
+      <div class="command">
+<pre><code>
+# Clone the repo
+git clone https://github.com/birozuru/flaskcon-demo
+cd flaskcon-demo
+docker-compose up -d
+make test-traffic
+open http://localhost:3000
+</code></pre>
+      </div>
+      
+      <p style="margin-top: 2rem; font-size: 1.6rem;">
+        Everything is pre-configured and ready to use
+      </p>
+    </div>
+
+
+
+    <div class="slide">
+      <h1>Session Takeaways</h1>
+      <ol style="font-size: 1.5rem;">
+        <li><strong>Start simple</strong> - prometheus-flask-exporter gives you 80% with one line</li>
+        <li><strong>Use Alloy for unified observability</strong> - Single pipeline for metrics and logs</li>
+        <li><strong>Alert intentionally</strong> - Every alert must be actionable</li>
+        <li><strong>Track business metrics</strong> - Not just infrastructure</li>
+        <li><strong>Structure your logs</strong> - JSON makes logs queryable</li>
+      </ol>
+    </div>
+
+
+    <div class="slide title-slide">
+      <h1>Thank You!</h1>
+      <h2 style="margin-top: 2rem;">Questions?</h2>
+      <div style="margin-top: 3rem; font-size: 1.6rem;">
+        <p>github.com/birozuru/flaskcon-demo</p>
+        <p>irozururmark@gmail.com</p>
+        <p>@birozuru</p>
+        <p style="margin-top: 2rem; font-size: 1.3rem; color: #64748b;">
+          The complete code is yours.<br/>
+          Build something observable.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="progress"></div>
+  <div class="slide-number"></div>
+  <div class="controls">
+    <button id="prev">← Previous</button>
+    <button id="next">Next →</button>
+  </div>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const progress = document.querySelector('.progress');
+    const slideNumber = document.querySelector('.slide-number');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    let currentSlide = 0;
+
+    function showSlide(n) {
+      slides[currentSlide].classList.remove('active');
+      currentSlide = Math.max(0, Math.min(n, slides.length - 1));
+      slides[currentSlide].classList.add('active');
+      
+      const progressPercent = ((currentSlide + 1) / slides.length) * 100;
+      progress.style.width = progressPercent + '%';
+      slideNumber.textContent = `${currentSlide + 1} / ${slides.length}`;
+      
+      prevBtn.disabled = currentSlide === 0;
+      nextBtn.disabled = currentSlide === slides.length - 1;
+    }
+
+    function nextSlide() {
+      if (currentSlide < slides.length - 1) showSlide(currentSlide + 1);
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) showSlide(currentSlide - 1);
+    }
+
+    prevBtn.addEventListener('click', prevSlide);
+    nextBtn.addEventListener('click', nextSlide);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        prevSlide();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        showSlide(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        showSlide(slides.length - 1);
+      } else if (e.key === 'f' || e.key === 'F') {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          document.documentElement.requestFullscreen();
+        }
+      }
+    });
+
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    document.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    });
+
+    document.addEventListener('touchend', (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      if (touchEndX < touchStartX - 50) nextSlide();
+      if (touchEndX > touchStartX + 50) prevSlide();
+    });
+
+    showSlide(0);
+  </script>
+</body>
+</html>
